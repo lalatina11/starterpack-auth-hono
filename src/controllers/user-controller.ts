@@ -1,21 +1,28 @@
-import type { User } from "@prisma/client";
+import dotenv from "dotenv";
+import { google } from "googleapis";
 import { Hono } from "hono";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import jwt from "jsonwebtoken";
+import { authorizationUrl, oAuth2Client } from "../libs/google-auth.js";
 import { otpStore } from "../libs/index.js";
+import { prisma } from "../libs/prisma.js";
+import {
+  getUserByEmailRepository,
+  identifierUserRepository,
+} from "../repositories/user-repository.js";
 import {
   authentificationUserService,
   checkUserService,
   getUserService,
   registerUserService,
 } from "../services/user-service.js";
-import { identifierUserRepository } from "../repositories/user-repository.js";
-import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import dotenv from "dotenv";
+import type { UserForm } from "../utils/user.js";
 dotenv.config();
 
 const userRouter = new Hono();
 
 userRouter.post("/register", async (c) => {
-  const body = (await c.req.json()) as User;
+  const body = (await c.req.json()) as UserForm;
   try {
     await registerUserService(body);
 
@@ -111,6 +118,78 @@ userRouter.get("/get-user-session", async (c) => {
 userRouter.post("/logout", async (c) => {
   deleteCookie(c, "user_token");
   return c.json({ message: "Success to logout", error: false }, 200);
+});
+
+//? LOGIN GOOGLE!
+
+userRouter.get("/google", async (c) => {
+  return c.redirect(authorizationUrl);
+});
+
+//? CALLBACK LOGIN
+
+userRouter.get("/google/callback", async (c) => {
+  try {
+    const code = await c.req.query("code"); // Directly get query parameter
+    if (!code) {
+      throw new Error("Code are required!");
+    }
+    const { tokens } = await oAuth2Client.getToken(code);
+    oAuth2Client.setCredentials(tokens);
+    const OAuth2 = google.oauth2({
+      auth: oAuth2Client,
+      version: "v2",
+    });
+
+    const { data } = await OAuth2.userinfo.get();
+
+    if (!data) {
+      throw new Error("ERRR");
+    }
+
+    const { email, name } = data;
+
+    if (!email || !name) {
+      throw new Error("Email dan Username tidak didapatkan");
+    }
+    let user = await getUserByEmailRepository(email);
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: { email, username: name },
+      });
+    }
+
+    const { id } = user;
+
+    if (!user.isAuthenticated) {
+      await prisma.user.update({
+        where: { id },
+        data: { isAuthenticated: true },
+      });
+    }
+
+    const token = jwt.sign({ id }, process.env.SECRET_KEY || "".toString(), {
+      expiresIn: "30m",
+    });
+    setCookie(c, "user_token", token, {
+      path: "/",
+      httpOnly: true,
+      maxAge: 60 * 60 * 24 * 7,
+      sameSite: "Lax",
+      secure: !!process.env.NODE_ENV,
+    });
+
+    return c.redirect(process.env.FRONTEND_URL || "http://localhost:5173");
+  } catch (error) {
+    return c.json(
+      {
+        message: (error as Error).message || "Google Auth Failed",
+        error: true,
+      },
+      400
+    );
+  }
 });
 
 export default userRouter;

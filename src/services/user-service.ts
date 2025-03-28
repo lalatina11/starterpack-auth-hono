@@ -20,6 +20,9 @@ export const registerUserService = async (data: UserForm) => {
   if (emailExist) {
     throw new Error("Email already used!");
   }
+  if (!data.password) {
+    throw new Error("Password harus diisi minimal 6 karakter");
+  }
 
   const hashedPassword = hashSync(data.password, 12);
 
@@ -44,6 +47,10 @@ export const checkUserService = async (
   const user = await identifierUserRepository(identifier);
   if (!user) {
     throw new Error("Invalid Email or Username");
+  }
+
+  if (!user.password) {
+    throw new Error("Password harus diisi minimal 6 karakter");
   }
 
   const validatePassword = compareSync(password, user.password);
