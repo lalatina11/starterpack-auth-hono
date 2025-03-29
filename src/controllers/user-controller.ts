@@ -144,7 +144,7 @@ userRouter.get("/google/callback", async (c) => {
     const { data } = await OAuth2.userinfo.get();
 
     if (!data) {
-      throw new Error("ERRR");
+      throw new Error("Cannot getting user data!");
     }
 
     const { email, name } = data;
