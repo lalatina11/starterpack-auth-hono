@@ -8,7 +8,9 @@ import { otpStore } from "../libs/index.js";
 import { prisma } from "../libs/prisma.js";
 import {
   getUserByEmailRepository,
+  getUserByIdRepository,
   identifierUserRepository,
+  registerUserRepository,
 } from "../repositories/user-repository.js";
 import {
   authentificationUserService,
@@ -187,6 +189,88 @@ userRouter.get("/google/callback", async (c) => {
         message: (error as Error).message || "Google Auth Failed",
         error: true,
       },
+      400
+    );
+  }
+});
+
+userRouter.get("/github", async (c) => {
+  return c.redirect(
+    `https://github.com/login/oauth/authorize?client_id=${process.env.GITHUB_CLIENT_ID}`
+  );
+});
+
+userRouter.get("/github/callback", async (c) => {
+  const code = c.req.query("code");
+  if (!code) return c.json({ error: "Code is required" }, 400);
+
+  try {
+    // Exchange code for access token
+    const tokenRes = await fetch(
+      "https://github.com/login/oauth/access_token",
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          client_id: process.env.GITHUB_CLIENT_ID,
+          client_secret: process.env.GITHUB_CLIENT_SECRET,
+          code,
+        }),
+      }
+    );
+
+    const tokenData = await tokenRes.json();
+    const accessToken = tokenData.access_token;
+
+    if (!accessToken) throw new Error("Failed to get access token");
+
+    // Get GitHub user data
+    const userRes = await fetch("https://api.github.com/user", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const userFromGithub = await userRes.json();
+
+    if (!userFromGithub) throw new Error("Failed to fetch user");
+
+    const { login: username, email } = userFromGithub;
+
+    if (!email || !username) {
+      throw new Error("");
+    }
+
+    let user = await getUserByEmailRepository(email);
+
+    const body = { username, email };
+
+    if (!user) {
+      user = await registerUserRepository(body);
+    }
+
+    const { id: userIdFromDB } = user;
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: userIdFromDB },
+      process.env.SECRET_KEY || "".toString(),
+      {
+        expiresIn: "30m",
+      }
+    );
+    // Set JWT cookie
+    setCookie(c, "user_token", token, {
+      path: "/",
+      httpOnly: true,
+      secure: true,
+      sameSite: "Lax",
+    });
+
+    return c.redirect(process.env.FRONTEND_URL || "http://localhost:5173");
+  } catch (error) {
+    return c.json(
+      { message: "Login Failed", error: (error as Error).message },
       400
     );
   }
