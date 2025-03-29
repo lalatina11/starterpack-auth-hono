@@ -8,7 +8,6 @@ import { otpStore } from "../libs/index.js";
 import { prisma } from "../libs/prisma.js";
 import {
   getUserByEmailRepository,
-  getUserByIdRepository,
   identifierUserRepository,
   registerUserRepository,
 } from "../repositories/user-repository.js";
@@ -112,7 +111,10 @@ userRouter.get("/get-user-session", async (c) => {
   try {
     const cookie = getCookie(c, "user_token");
     if (!cookie) throw new Error("Cookie not found");
-    return c.json({ cookie, error: false }, 200);
+
+    const user = await getUserService(cookie);
+
+    return c.json({ token:cookie, user, error: false }, 200);
   } catch (error) {
     return c.json({ cookie: null, error: true }, 404);
   }
