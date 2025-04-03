@@ -114,7 +114,7 @@ userRouter.get("/get-user-session", async (c) => {
 
     const user = await getUserService(cookie);
 
-    return c.json({ token:cookie, user, error: false }, 200);
+    return c.json({ token: cookie, user, error: false }, 200);
   } catch (error) {
     return c.json({ cookie: null, error: true }, 404);
   }
@@ -184,7 +184,12 @@ userRouter.get("/google/callback", async (c) => {
       secure: !!process.env.NODE_ENV,
     });
 
-    return c.redirect(process.env.FRONTEND_URL || "http://localhost:5173");
+    const referer = c.req.header("Referer") || c.req.header("Origin");
+    const frontendUrl = referer
+      ? new URL(referer).origin
+      : process.env.FRONTEND_URL || "http://localhost:5173";
+
+    return c.redirect(frontendUrl);
   } catch (error) {
     return c.json(
       {
@@ -269,7 +274,12 @@ userRouter.get("/github/callback", async (c) => {
       sameSite: "Lax",
     });
 
-    return c.redirect(process.env.FRONTEND_URL || "http://localhost:5173");
+    const referer = c.req.header("Referer") || c.req.header("Origin");
+    const frontendUrl = referer
+      ? new URL(referer).origin
+      : process.env.FRONTEND_URL || "http://localhost:5173";
+
+    return c.redirect(frontendUrl);
   } catch (error) {
     return c.json(
       { message: "Login Failed", error: (error as Error).message },

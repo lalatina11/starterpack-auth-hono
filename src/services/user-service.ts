@@ -50,7 +50,9 @@ export const checkUserService = async (
   }
 
   if (!user.password) {
-    throw new Error("Password harus diisi minimal 6 karakter");
+    throw new Error(
+      "Anda telah mendaftar tanpa menggunakan password,\nsilahkan masuk menggunakan google atau github!"
+    );
   }
 
   const validatePassword = compareSync(password, user.password);
